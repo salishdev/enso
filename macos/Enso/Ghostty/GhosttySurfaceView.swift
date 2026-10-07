@@ -333,6 +333,16 @@ final class GhosttySurfaceView: NSView, NSTextInputClient {
     // MARK: - Copy / paste (Edit menu)
 
     @objc func copy(_ sender: Any?) {
+        // With no terminal selection, a ⌘C keystroke belongs to the program:
+        // TUIs with mouse tracking (Claude Code etc.) draw their own selection
+        // and copy it on super+c. Route the key through ghostty so its
+        // performable copy binding passes it on, as Ghostty.app does.
+        if let surface, !ghostty_surface_has_selection(surface),
+           let event = NSApp.currentEvent, event.type == .keyDown,
+           event.modifierFlags.contains(.command) {
+            keyDown(with: event)
+            return
+        }
         performBinding("copy_to_clipboard")
     }
 
