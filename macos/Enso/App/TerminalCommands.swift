@@ -69,6 +69,42 @@ struct TerminalCommands: Commands {
             .keyboardShortcut("n", modifiers: [.command, .shift])
         }
 
+        // Edit > Find, aimed at the focused pane. ⌘F/⌘E go through
+        // libghostty's own start_search/search_selection, which answer with
+        // START_SEARCH; next/previous step the live search. Replaces the
+        // stock text-editing group, whose Find items target text views.
+        CommandGroup(replacing: .textEditing) {
+            Menu("Find") {
+                Button("Find…") {
+                    focusedSurface?.startSearch()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+
+                Button("Find Next") {
+                    focusedSurface?.search.next()
+                }
+                .keyboardShortcut("g", modifiers: .command)
+
+                Button("Find Previous") {
+                    focusedSurface?.search.previous()
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+
+                Button("Hide Find Bar") {
+                    focusedSurface?.search.end()
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Use Selection for Find") {
+                    focusedSurface?.searchSelection()
+                }
+                .keyboardShortcut("e", modifiers: .command)
+            }
+            .disabled(store.selection == nil)
+        }
+
         // View menu.
         CommandGroup(after: .toolbar) {
             Button(store.isSidebarVisible ? "Hide Sidebar" : "Show Sidebar") {
@@ -151,6 +187,11 @@ struct TerminalCommands: Commands {
                 .disabled(store.sessions.count < index)
             }
         }
+    }
+
+    /// The selected (focused) pane's live surface; nil for a sleeping tab.
+    private var focusedSurface: GhosttySurfaceView? {
+        store.selection.flatMap { GhosttySurfaceManager.shared.existingView(for: $0) }
     }
 
     private var pinTitle: String {

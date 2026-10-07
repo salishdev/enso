@@ -356,10 +356,52 @@ final class GhosttyRuntime {
             // ⌘-clicking a link asks the app to open it in the default handler.
             return openURL(action.action.open_url)
 
+        case GHOSTTY_ACTION_START_SEARCH:
+            // ⌘F / ⌘E. libghostty runs the search itself; we only show the
+            // bar. The needle is borrowed C memory — copy it here.
+            guard let view = surfaceView(for: target) else { return false }
+            let needle = action.action.start_search.needle.map { String(cString: $0) }
+            Task { @MainActor in
+                view.search.begin(needle: needle)
+            }
+            return true
+
+        case GHOSTTY_ACTION_END_SEARCH:
+            guard let view = surfaceView(for: target) else { return false }
+            Task { @MainActor in
+                view.search.end()
+            }
+            return true
+
+        case GHOSTTY_ACTION_SEARCH_TOTAL:
+            guard let view = surfaceView(for: target) else { return false }
+            let total = action.action.search_total.total
+            Task { @MainActor in
+                view.search.total = total >= 0 ? UInt(total) : nil
+            }
+            return true
+
+        case GHOSTTY_ACTION_SEARCH_SELECTED:
+            guard let view = surfaceView(for: target) else { return false }
+            let selected = action.action.search_selected.selected
+            Task { @MainActor in
+                view.search.selected = selected >= 0 ? UInt(selected) : nil
+            }
+            return true
+
         default:
             NSLog("GhosttyRuntime: unhandled action tag=%d", action.tag.rawValue)
             return false
         }
+    }
+
+    /// The view behind a surface-targeted action, nil for app targets.
+    nonisolated private static func surfaceView(for target: ghostty_target_s) -> GhosttySurfaceView? {
+        guard target.tag == GHOSTTY_TARGET_SURFACE,
+              let surface = target.target.surface,
+              let userdata = ghostty_surface_userdata(surface)
+        else { return nil }
+        return Unmanaged<GhosttySurfaceView>.fromOpaque(userdata).takeUnretainedValue()
     }
 
     /// Opens a URL libghostty surfaced from a ⌘-click on a terminal link.

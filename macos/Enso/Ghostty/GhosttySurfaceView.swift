@@ -15,6 +15,12 @@ final class GhosttySurfaceView: NSView, NSTextInputClient {
     /// a split layout syncs the sidebar selection to that pane's tab.
     var onFocusGained: (() -> Void)?
 
+    /// Find-bar state for this surface; the split host shows the bar while
+    /// it's active.
+    private(set) lazy var search = TerminalSearch { [weak self] action in
+        self?.performBinding(action)
+    }
+
     /// Non-nil while interpretKeyEvents is routing a keyDown through
     /// NSTextInputClient; collects the text AppKit translates for us.
     private var keyTextAccumulator: [String]?
@@ -342,6 +348,18 @@ final class GhosttySurfaceView: NSView, NSTextInputClient {
 
     override func selectAll(_ sender: Any?) {
         performBinding("select_all")
+    }
+
+    // MARK: - Find (Edit menu)
+
+    /// ⌘F: libghostty answers with START_SEARCH, which opens the bar.
+    func startSearch() {
+        performBinding("start_search")
+    }
+
+    /// ⌘E: searches for the current selection (no-op without one).
+    func searchSelection() {
+        performBinding("search_selection")
     }
 
     private func performBinding(_ action: String) {

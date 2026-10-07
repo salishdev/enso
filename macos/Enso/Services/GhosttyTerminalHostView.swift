@@ -121,6 +121,14 @@ final class SplitLayoutHostView: NSView {
     /// The moon view a sleeping pane wears where its terminal would be;
     /// one per sleeping pane, removed the moment the pane wakes.
     private var sleepOverlays: [TerminalSession.ID: NSHostingView<PaneSleepingView>] = [:]
+    /// The find bar of each pane with an active search, floating over the
+    /// top-right of its terminal. Shown and hidden by observing the
+    /// surface's search state, since ⌘F reaches libghostty first.
+    private var findBars: [TerminalSession.ID: NSHostingView<TerminalFindBar>] = [:]
+    /// One isActive subscription per mounted surface, keyed by pane; the
+    /// surface identity rides along so a pane woken onto a fresh surface
+    /// resubscribes.
+    private var searchObservers: [TerminalSession.ID: (surface: ObjectIdentifier, token: AnyCancellable)] = [:]
     private var focusedID: TerminalSession.ID?
     /// The pane last handed first responder by this host. Focus is granted
     /// only when the focused pane changes (or its surface is newly
@@ -244,6 +252,9 @@ final class SplitLayoutHostView: NSView {
             }
         }
 
+        // After the cards exist: a resubscription restores a bar into its
+        // pane's card immediately.
+        syncSearchObservers()
         layoutPanes()
 
         if let focusedID, let surface = surfaces[focusedID],
@@ -280,6 +291,60 @@ final class SplitLayoutHostView: NSView {
             if let rootView = headerRootView(for: headerID) {
                 header.rootView = rootView
             }
+        }
+    }
+
+    // MARK: - Find bar
+
+    /// Keeps exactly one search subscription per mounted surface. A
+    /// subscription fires immediately with the current state, so a tab
+    /// switched back to mid-search gets its bar back.
+    private func syncSearchObservers() {
+        for id in searchObservers.keys where surfaces[id] == nil {
+            searchObservers.removeValue(forKey: id)
+            removeFindBar(for: id)
+        }
+        for (id, surface) in surfaces {
+            let identity = ObjectIdentifier(surface)
+            guard searchObservers[id]?.surface != identity else { continue }
+            let token = surface.search.$isActive
+                .removeDuplicates()
+                .sink { [weak self] active in
+                    // @Published emits before the stored value changes;
+                    // act on the emitted value, not a re-read.
+                    if active {
+                        self?.showFindBar(for: id)
+                    } else {
+                        self?.removeFindBar(for: id)
+                    }
+                }
+            searchObservers[id] = (identity, token)
+        }
+    }
+
+    private func showFindBar(for id: TerminalSession.ID) {
+        guard findBars[id] == nil, let surface = surfaces[id], let card = cards[id] else { return }
+        let bar = NSHostingView(rootView: TerminalFindBar(search: surface.search) { [weak self, weak surface] in
+            guard let surface else { return }
+            surface.search.end()
+            self?.window?.makeFirstResponder(surface)
+        })
+        bar.sizingOptions = []
+        bar.safeAreaRegions = []
+        findBars[id] = bar
+        // Added last so it sits above the surface (and the header).
+        card.content.addSubview(bar)
+        layoutPanes()
+    }
+
+    private func removeFindBar(for id: TerminalSession.ID) {
+        guard let bar = findBars.removeValue(forKey: id) else { return }
+        // Closing the bar while its field holds the keyboard would strand
+        // focus on a detached view; give it back to the terminal.
+        let hadFocus = (bar.window?.firstResponder as? NSView)?.isDescendant(of: bar) ?? false
+        bar.removeFromSuperview()
+        if hadFocus, let surface = surfaces[id] {
+            window?.makeFirstResponder(surface)
         }
     }
 
@@ -414,6 +479,18 @@ final class SplitLayoutHostView: NSView {
             )
             surfaces[id]?.frame = bodyRect
             sleepOverlays[id]?.frame = bodyRect
+            // The find bar hugs the terminal's top-right corner, narrowing
+            // with a skinny pane rather than spilling past its edge.
+            if let bar = findBars[id] {
+                let inset: CGFloat = 8
+                let size = TerminalFindBar.size
+                let width = min(size.width, max(bodyRect.width - inset * 2, 0))
+                bar.frame = CGRect(
+                    x: bodyRect.maxX - inset - width,
+                    y: bodyRect.minY + inset,
+                    width: width, height: size.height
+                )
+            }
         case .split(let branch):
             let thickness = Self.dividerThickness
             let firstRect: CGRect
