@@ -89,4 +89,35 @@ struct NewTabFolderInheritanceTests {
         let again = try #require(store.activeSpace.pinnedFolders.first { $0.id == folder.id })
         #expect(again.sessions.last?.workingDirectory == "/tmp/elsewhere")
     }
+
+    /// A tab with nothing to inherit leaves its cwd to Ghostty's
+    /// `working-directory` config instead of forcing home.
+    @Test func tabWithoutDirectoryDefersToGhosttyConfig() async throws {
+        let (store, _, _, _) = makeStore()
+
+        store.createSession()
+
+        let created = try #require(store.selectedSession)
+        #expect(created.workingDirectoryPending)
+        #expect(created.inheritableWorkingDirectory == nil)
+
+        // A tab opened from it before the shell reports must defer too,
+        // not pin itself to the home stand-in.
+        store.createSessionInheritingWorkingDirectory()
+        #expect(store.selectedSession?.id != created.id)
+        #expect(store.selectedSession?.workingDirectoryPending == true)
+    }
+
+    /// The shell's first report resolves the stand-in — even when Ghostty
+    /// started it in home, which matches the stand-in exactly.
+    @Test func firstShellReportResolvesPendingDirectory() async throws {
+        let (store, _, _, _) = makeStore()
+        store.createSession()
+        let created = try #require(store.selectedSession)
+
+        store.updateWorkingDirectory(created.id, to: created.workingDirectory)
+
+        #expect(store.selectedSession?.workingDirectoryPending == false)
+        #expect(store.selectedSession?.inheritableWorkingDirectory == created.workingDirectory)
+    }
 }

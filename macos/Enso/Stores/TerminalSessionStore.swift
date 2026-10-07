@@ -388,9 +388,9 @@ final class TerminalSessionStore: ObservableObject {
     /// the sidebar's root-level "New Terminal".
     func createSessionInheritingWorkingDirectory() {
         if let folder = selectionFolder {
-            createSession(inFolder: folder.id, workingDirectory: selectedSession?.workingDirectory)
+            createSession(inFolder: folder.id, workingDirectory: selectedSession?.inheritableWorkingDirectory)
         } else {
-            createSession(workingDirectory: selectedSession?.workingDirectory)
+            createSession(workingDirectory: selectedSession?.inheritableWorkingDirectory)
         }
     }
 
@@ -472,7 +472,7 @@ final class TerminalSessionStore: ObservableObject {
                 continue
             }
             let cwd = workingDirectory
-                ?? folder.allSessions.max(by: { $0.lastActivity < $1.lastActivity })?.workingDirectory
+                ?? folder.allSessions.max(by: { $0.lastActivity < $1.lastActivity })?.inheritableWorkingDirectory
                 ?? Self.existingDirectory(folder.lastWorkingDirectory)
             let session = Self.makeSession(workingDirectory: cwd, accentIndex: sessions.count)
             spaces[spaceIndex].modifyFolder(folderID) { $0.items.append(.tab(session)) }
@@ -561,6 +561,7 @@ final class TerminalSessionStore: ObservableObject {
         TerminalSession(
             title: "Terminal",
             workingDirectory: workingDirectory ?? NSHomeDirectory(),
+            workingDirectoryPending: workingDirectory == nil,
             status: .running,
             accent: .cycling(index: accentIndex)
         )
@@ -618,7 +619,7 @@ final class TerminalSessionStore: ObservableObject {
             wake(sessionID: selection)
         }
         let session = Self.makeSession(
-            workingDirectory: source.workingDirectory,
+            workingDirectory: source.inheritableWorkingDirectory,
             accentIndex: sessions.count
         )
 
@@ -889,8 +890,9 @@ final class TerminalSessionStore: ObservableObject {
             case .folder(var folder):
                 let losesDirectTab = folder.sessions.contains { sessionIDs.contains($0.id) }
                 if losesDirectTab,
-                   let lastActive = folder.sessions.max(by: { $0.lastActivity < $1.lastActivity }) {
-                    folder.lastWorkingDirectory = lastActive.workingDirectory
+                   let lastActive = folder.sessions.max(by: { $0.lastActivity < $1.lastActivity }),
+                   let cwd = lastActive.inheritableWorkingDirectory {
+                    folder.lastWorkingDirectory = cwd
                 }
                 moved += extractSessions(sessionIDs, from: &folder.items)
                 items[index] = .folder(folder)
@@ -1655,9 +1657,10 @@ final class TerminalSessionStore: ObservableObject {
         // Shells re-report the cwd on every prompt; only an actual move gets
         // published and persisted.
         guard let session = sessions.first(where: { $0.id == sessionID }),
-              session.workingDirectory != path else { return }
+              session.workingDirectory != path || session.workingDirectoryPending else { return }
         update(sessionID) { item in
             item.workingDirectory = path
+            item.workingDirectoryPending = false
         }
         rememberWorkingDirectory(path, forFolderContaining: sessionID)
         save()

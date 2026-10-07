@@ -32,7 +32,9 @@ final class GhosttySurfaceManager {
         var environment = agentStore.spawnEnvironment(forTab: session.id)
         environment[ForegroundProcessResolver.sessionMarkerKey] = ForegroundProcessResolver.marker(forTab: session.id)
         let view = GhosttySurfaceView(
-            workingDirectory: session.workingDirectory,
+            // A pending cwd spawns with none, so Ghostty's working-directory
+            // config decides where the shell starts.
+            workingDirectory: session.workingDirectoryPending ? nil : session.workingDirectory,
             environmentVariables: environment,
             initialInput: restore.map {
                 agentStore.resumeInput(for: $0, currentWorkingDirectory: session.workingDirectory)

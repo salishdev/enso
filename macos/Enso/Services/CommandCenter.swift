@@ -439,16 +439,16 @@ final class CommandCenter: ObservableObject {
             verb: "Open",
             section: section
         ) { [weak store] in
-            store?.createSession(workingDirectory: NSHomeDirectory())
+            store?.createSession()
         })
         if folder == nil, let current = store.selectedSession {
             // Loose tab: "folder" means the working directory instead.
-            let cwd = current.workingDirectory
+            let cwd = current.inheritableWorkingDirectory
             items.append(PaletteItem(
                 id: "cmd-new-tab-cwd",
                 icon: .symbol("folder.badge.plus"),
                 title: "New Tab in Current Folder",
-                context: Self.folderName(for: cwd),
+                context: Self.folderName(for: current.workingDirectory),
                 verb: "Open",
                 section: section
             ) { [weak store] in
@@ -646,7 +646,7 @@ final class CommandCenter: ObservableObject {
                 verb: "Open"
             ) { [weak store] in
                 guard let store, let session = store.selectedSession else { return }
-                store.createSession(workingDirectory: session.workingDirectory)
+                store.createSession(workingDirectory: session.inheritableWorkingDirectory)
             })
 
             let pinned = store.isPinned(selection)

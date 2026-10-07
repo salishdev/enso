@@ -31,7 +31,7 @@ final class GhosttySurfaceView: NSView, NSTextInputClient {
     }
 
     init(
-        workingDirectory: String,
+        workingDirectory: String?,
         environmentVariables: [String: String] = [:],
         initialInput: String? = nil,
         fontSize: Float? = nil
@@ -62,7 +62,7 @@ final class GhosttySurfaceView: NSView, NSTextInputClient {
     }
 
     private func createSurface(
-        workingDirectory: String,
+        workingDirectory: String?,
         environmentVariables: [String: String],
         initialInput: String?,
         fontSize: Float?
@@ -96,7 +96,10 @@ final class GhosttySurfaceView: NSView, NSTextInputClient {
             return UnsafePointer(pointer)
         }
 
-        config.working_directory = cString((workingDirectory as NSString).expandingTildeInPath)
+        // Nil leaves libghostty to apply the config's working-directory.
+        if let workingDirectory {
+            config.working_directory = cString((workingDirectory as NSString).expandingTildeInPath)
+        }
         if let initialInput, !initialInput.isEmpty {
             // Typed into the PTY at spawn: a restored agent's resume command
             // shows up in the terminal exactly as if the user ran it.

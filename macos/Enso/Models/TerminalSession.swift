@@ -466,6 +466,12 @@ struct TerminalSession: Identifiable, Hashable, Codable {
     var title: String
     var titleOrigin: TitleOrigin
     var workingDirectory: String
+    /// True until the shell first reports its cwd for a tab that had no
+    /// directory to inherit. Such a tab spawns without an explicit working
+    /// directory, so libghostty applies the user's `working-directory`
+    /// config (which its C API can't hand back to us); `workingDirectory`
+    /// holds home as a stand-in until the report lands.
+    var workingDirectoryPending: Bool
     var branch: String?
     var status: Status
     var accent: SessionAccent
@@ -490,13 +496,20 @@ struct TerminalSession: Identifiable, Hashable, Codable {
     /// shell on relaunch, so it is not persisted.
     var runningProcess: TabProcess?
 
+    /// The cwd a new tab should continue in, nil while it is still the
+    /// pending stand-in — inheriting that would pin the new tab to home
+    /// instead of letting Ghostty's config place it too.
+    var inheritableWorkingDirectory: String? {
+        workingDirectoryPending ? nil : workingDirectory
+    }
+
     /// The cwd the way people read it: home-relative with a tilde.
     var displayWorkingDirectory: String {
         (workingDirectory as NSString).abbreviatingWithTildeInPath
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, titleOrigin, workingDirectory, branch, status, accent, lastActivity,
+        case id, title, titleOrigin, workingDirectory, workingDirectoryPending, branch, status, accent, lastActivity,
              isSleeping, sleepingProcess, sleepingFontSize
     }
 
@@ -505,6 +518,7 @@ struct TerminalSession: Identifiable, Hashable, Codable {
         title: String,
         titleOrigin: TitleOrigin = .shell,
         workingDirectory: String,
+        workingDirectoryPending: Bool = false,
         branch: String? = nil,
         status: Status = .running,
         accent: SessionAccent = .blue,
@@ -517,6 +531,7 @@ struct TerminalSession: Identifiable, Hashable, Codable {
         self.title = title
         self.titleOrigin = titleOrigin
         self.workingDirectory = workingDirectory
+        self.workingDirectoryPending = workingDirectoryPending
         self.branch = branch
         self.status = status
         self.accent = accent
@@ -533,6 +548,7 @@ struct TerminalSession: Identifiable, Hashable, Codable {
         // Absent in pre-auto-naming state files.
         titleOrigin = try container.decodeIfPresent(TitleOrigin.self, forKey: .titleOrigin) ?? .shell
         workingDirectory = try container.decode(String.self, forKey: .workingDirectory)
+        workingDirectoryPending = try container.decodeIfPresent(Bool.self, forKey: .workingDirectoryPending) ?? false
         branch = try container.decodeIfPresent(String.self, forKey: .branch)
         status = try container.decode(Status.self, forKey: .status)
         accent = try container.decode(SessionAccent.self, forKey: .accent)
